@@ -1,0 +1,100 @@
+name: equitylens
+
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: equitylens_backend
+    env_file: ./backend/.env
+    environment:
+      # Service hostnames — override whatever's in .env so the backend
+      # always talks to the containers below, never localhost.
+      DATABASE_URL: postgresql+asyncpg://equitylens:equitylens@postgres:5432/equitylens
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+    ports:
+      # Host 8002 -> container 8001: host 8001 is already taken by another
+      # project's stack on this machine. Container-internal port stays 8001.
+      - "8002:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Browser-side code, so it must hit the backend's host-mapped port,
+        # not the "backend:8001" container-network name.
+        VITE_API_BASE_URL: http://localhost:8002
+    container_name: equitylens_frontend
+    ports:
+      # Host 8081 -> container 80: host 80 is already taken by another
+      # project's stack on this machine.
+      - "8081:80"
+    depends_on:
+      - backend
+    restart: always
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: equitylens_postgres
+    env_file: ./backend/.env
+    ports:
+      # Host 5433 -> container 5432: host 5432 is already taken.
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: equitylens_redis
+    ports:
+      # Host 6380 -> container 6379: host 6379 is already taken.
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.19.0
+    container_name: equitylens_qdrant
+    ports:
+      # Host 6335/6336 -> container 6333/6334: host 6333-6334 already taken.
+      - "6335:6333" # REST
+      - "6336:6334" # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/127.0.0.1/6333' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  redis_data:
+  qdrant_data:
