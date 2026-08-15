@@ -33,6 +33,20 @@ Secret Manager/CI-CD are not).
   correction loop back to the synthesizer — [backend/app/graph/](backend/app/graph/)
   Every node is `@traceable`, so a full run shows up as one nested trace in
   LangSmith (set `LANGCHAIN_TRACING_V2=true` + `LANGCHAIN_API_KEY`).
+- **LLM gateway with fallback** ([backend/app/llm/](backend/app/llm/)): every
+  graph node calls the gateway instead of a single fixed Groq client. It
+  routes across multiple Groq accounts (`GROQ_API_KEYS`, comma-separated —
+  each with its own daily token budget) and, within each account, a model
+  chain per task complexity — SIMPLE tasks (planner, fact-checker) prefer a
+  small/fast model, COMPLEX tasks (synthesizer) prefer the larger model for
+  quality. On a rate limit it puts that (account, model) into cooldown and
+  falls to the next candidate; on an auth failure it skips the rest of that
+  account's chain; transient errors get one retry. A semantic response cache
+  (`llm_semantic_cache_enabled`) skips the LLM entirely on a near-duplicate
+  request, scoped per-ticker to avoid cross-company collisions, and disabled
+  for the fact-checker's correction-pass calls (a revision prompt is close
+  enough to the original draft that the cache would otherwise silently hand
+  back the unrevised draft).
 - **Watchlist auto-refresh** (Section 2.4/7): an in-process APScheduler job
   (stands in for Cloud Scheduler + Cloud Run) that re-runs the pipeline for
   each watchlisted company on its own cadence —
@@ -43,9 +57,10 @@ Secret Manager/CI-CD are not).
 
 Everything above except the LLM- and Cohere-dependent steps has been
 exercised end-to-end against live SEC EDGAR, Yahoo Finance, and DuckDuckGo
-data. The LLM calls use Groq-hosted open-source models (default: Llama 3.3
-70B) and require `GROQ_API_KEY`; retrieval reranking uses `COHERE_API_KEY`
-(retrieval still works without it — falls back to the un-reranked RRF order).
+data. The LLM calls go through the gateway above and require `GROQ_API_KEYS`
+(comma-separated; `GROQ_API_KEY` singular still works for a one-account
+setup); retrieval reranking uses `COHERE_API_KEY` (retrieval still works
+without it — falls back to the un-reranked RRF order).
 
 ## Running with Docker Compose (recommended)
 
