@@ -10,6 +10,7 @@ import json
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.cache import cached_call
 from app.config import settings
@@ -90,7 +91,15 @@ async def add_to_watchlist(request: AddWatchlistRequest) -> WatchlistEntryRespon
                 ticker=ticker, company=display_name, refresh_cadence_days=request.refresh_cadence_days
             )
             session.add(entry)
-            await session.flush()
+            try:
+                await session.flush()
+            except IntegrityError:
+                # Lost a race with a concurrent add for the same ticker (e.g. a
+                # double-click) — the other request's insert already committed,
+                # so fall back to fetching it instead of erroring.
+                await session.rollback()
+                existing = await session.execute(select(WatchlistEntry).where(WatchlistEntry.ticker == ticker))
+                entry = existing.scalar_one()
         return await _to_response(session, entry)
 
 

@@ -10,7 +10,8 @@ from __future__ import annotations
 from langsmith import traceable
 from pydantic import BaseModel, Field
 
-from app.graph.llm import get_llm
+from app.llm.gateway import get_llm_gateway
+from app.llm.types import TaskComplexity
 from app.graph.state import ResearchState
 from app.graph.status import node_status
 
@@ -47,14 +48,21 @@ async def fact_checker_node(state: ResearchState) -> dict:
         evidence_by_id = {item["id"]: item for item in state["evidence_bundle"]}
         draft_text = _format_draft_for_check(state["draft_report"], evidence_by_id)
 
-        llm = get_llm().with_structured_output(VerificationSchema)
+        # Same reasoning as the synthesizer: re-checking a revised draft must
+        # genuinely re-run, not return a stale verdict cached against the
+        # original (pre-revision) draft it's now meant to be re-verifying.
+        is_first_pass = state.get("correction_passes", 0) == 0
+        llm = get_llm_gateway().with_structured_output(
+            VerificationSchema, task=TaskComplexity.SIMPLE, cache_scope=state["ticker"], use_cache=is_first_pass
+        )
         result: VerificationSchema = await llm.ainvoke(
             [("system", _FACT_CHECK_SYSTEM_PROMPT), ("human", draft_text)]
         )
 
         verdicts = [v.model_dump() for v in result.verdicts]
         flagged_count = sum(1 for v in verdicts if v["status"] == "flagged")
-        await status.message(f"{len(verdicts) - flagged_count}/{len(verdicts)} sections verified")
+        note = " (semantic cache)" if llm.cache_hit else f" (used {llm.last_model_used})" if llm.fell_back else ""
+        await status.message(f"{len(verdicts) - flagged_count}/{len(verdicts)} sections verified{note}")
 
         return {
             "verification_results": verdicts,

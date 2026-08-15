@@ -11,7 +11,8 @@ from __future__ import annotations
 from langsmith import traceable
 from pydantic import BaseModel, Field
 
-from app.graph.llm import get_llm
+from app.llm.gateway import get_llm_gateway
+from app.llm.types import TaskComplexity
 from app.graph.state import ResearchState
 from app.graph.status import node_status
 
@@ -75,10 +76,21 @@ async def synthesizer_node(state: ResearchState) -> dict:
                 )
                 await status.message(f"Revising {len(flagged)} flagged section(s) after fact-check")
 
-        llm = get_llm().with_structured_output(ReportSchema)
+        # Cache only the first pass — a revision prompt ("fix this flagged
+        # section") is textually near-identical to the original draft it's
+        # revising, so caching it would return the stale, unrevised draft
+        # and silently defeat the correction loop (caught live).
+        is_first_pass = state.get("correction_passes", 0) == 0
+        llm = get_llm_gateway().with_structured_output(
+            ReportSchema, task=TaskComplexity.COMPLEX, cache_scope=state["ticker"], use_cache=is_first_pass
+        )
         report: ReportSchema = await llm.ainvoke(
             [("system", _SYNTH_SYSTEM_PROMPT), ("human", "\n\n".join(human_parts))]
         )
+        if llm.cache_hit:
+            await status.message("Draft served from semantic cache — skipped the LLM call")
+        elif llm.fell_back:
+            await status.message(f"Primary model unavailable — used {llm.last_model_used}")
 
         draft = {name: getattr(report, name).model_dump() for name in SECTION_NAMES}
         return {"draft_report": draft}

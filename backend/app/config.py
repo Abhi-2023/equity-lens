@@ -13,9 +13,50 @@ DATA_DIR = BACKEND_ROOT / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def _split_csv(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 class Settings:
-    groq_api_key: str | None = os.getenv("GROQ_API_KEY")
-    groq_model: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+    # LLM gateway (Section: "LLM Gateway with fallback"). GROQ_API_KEYS is a
+    # comma-separated list — one entry per Groq account, tried in order, each
+    # with its own independent daily token budget. GROQ_API_KEY (singular) is
+    # kept as a fallback for a single-account setup.
+    groq_api_keys: list[str] = _split_csv(os.getenv("GROQ_API_KEYS")) or _split_csv(
+        os.getenv("GROQ_API_KEY")
+    )
+
+    # Two model chains, tried in order within each account before moving to
+    # the next account. SIMPLE is used for structured/classification-style
+    # node work (planner, fact-checker); COMPLEX for open-ended writing
+    # (synthesizer), where quality matters more than speed/cost.
+    groq_model_chain_simple: list[str] = _split_csv(os.getenv("GROQ_MODEL_CHAIN_SIMPLE")) or [
+        "llama-3.1-8b-instant",
+        "llama-3.3-70b-versatile",
+        "openai/gpt-oss-120b",
+    ]
+    groq_model_chain_complex: list[str] = _split_csv(os.getenv("GROQ_MODEL_CHAIN_COMPLEX")) or [
+        "llama-3.3-70b-versatile",
+        "openai/gpt-oss-120b",
+        "llama-3.1-8b-instant",
+    ]
+
+    llm_gateway_cooldown_seconds: int = int(os.getenv("LLM_GATEWAY_COOLDOWN_SECONDS", "600"))
+    llm_gateway_max_retries_per_model: int = int(os.getenv("LLM_GATEWAY_MAX_RETRIES_PER_MODEL", "1"))
+    llm_gateway_timeout_seconds: int = int(os.getenv("LLM_GATEWAY_TIMEOUT_SECONDS", "60"))
+
+    # Semantic response cache — skips the LLM entirely on a near-duplicate
+    # request (same evidence bundle re-synthesized, a watchlist refresh where
+    # nothing changed, an accidental double-submit).
+    llm_semantic_cache_enabled: bool = os.getenv("LLM_SEMANTIC_CACHE_ENABLED", "true").lower() == "true"
+    llm_semantic_cache_similarity_threshold: float = float(
+        os.getenv("LLM_SEMANTIC_CACHE_SIMILARITY_THRESHOLD", "0.97")
+    )
+    llm_semantic_cache_ttl_seconds: int = int(
+        os.getenv("LLM_SEMANTIC_CACHE_TTL_SECONDS", str(60 * 60 * 24 * 3))
+    )
 
     # Postgres via asyncpg — required (Section 8: "Cloud SQL (Postgres)"). Default
     # assumes `docker-compose up postgres` exposed on localhost; the backend

@@ -15,6 +15,7 @@ export default function ReportPage() {
   const [status, setStatus] = useState(null)
   const [report, setReport] = useState(null)
   const [watchlisted, setWatchlisted] = useState(false)
+  const [watchlistBusy, setWatchlistBusy] = useState(false)
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -54,9 +55,14 @@ export default function ReportPage() {
   }, [report?.ticker])
 
   async function handleAddToWatchlist() {
-    if (!report) return
-    await addToWatchlist(report.ticker)
-    setWatchlisted(true)
+    if (!report || watchlistBusy) return
+    setWatchlistBusy(true)
+    try {
+      await addToWatchlist(report.ticker)
+      setWatchlisted(true)
+    } finally {
+      setWatchlistBusy(false)
+    }
   }
 
   async function handleRerun() {
@@ -96,6 +102,7 @@ export default function ReportPage() {
             onRerun={handleRerun}
             onAddToWatchlist={handleAddToWatchlist}
             watchlisted={watchlisted}
+            watchlistBusy={watchlistBusy}
           />
         </div>
       )}

@@ -35,7 +35,7 @@ function GroundednessBadge({ groundedness }) {
 /** Report View (Section 2.3): structured sections with inline citation
  * markers resolved to a source list, plus a per-section groundedness badge
  * produced by the fact-checker agent. */
-export default function ReportView({ report, onRerun, onAddToWatchlist, watchlisted }) {
+export default function ReportView({ report, onRerun, onAddToWatchlist, watchlisted, watchlistBusy }) {
   const flaggedCount = Object.values(report.sections).filter((s) => s.groundedness === 'flagged').length
 
   return (
@@ -63,10 +63,10 @@ export default function ReportView({ report, onRerun, onAddToWatchlist, watchlis
           </button>
           <button
             onClick={onAddToWatchlist}
-            disabled={watchlisted}
+            disabled={watchlisted || watchlistBusy}
             className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
-            {watchlisted ? 'On watchlist' : 'Add to watchlist'}
+            {watchlisted ? 'On watchlist' : watchlistBusy ? 'Adding…' : 'Add to watchlist'}
           </button>
         </div>
       </div>

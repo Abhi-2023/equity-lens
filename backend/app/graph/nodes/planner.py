@@ -10,7 +10,8 @@ from __future__ import annotations
 from langsmith import traceable
 from pydantic import BaseModel, Field
 
-from app.graph.llm import get_llm
+from app.llm.gateway import get_llm_gateway
+from app.llm.types import TaskComplexity
 from app.graph.state import ResearchState
 from app.graph.status import node_status
 from app.graph.ticker_resolution import resolve_ticker
@@ -41,7 +42,9 @@ async def planner_node(state: ResearchState) -> dict:
         await status.message(f"Resolved '{state['company_input']}' -> {ticker} ({display_name})")
 
         depth = state.get("depth", "standard")
-        llm = get_llm().with_structured_output(PlanSchema)
+        llm = get_llm_gateway().with_structured_output(
+            PlanSchema, task=TaskComplexity.SIMPLE, cache_scope=ticker
+        )
         plan: PlanSchema = await llm.ainvoke(
             [
                 ("system", _PLANNER_SYSTEM_PROMPT),
@@ -53,6 +56,10 @@ async def planner_node(state: ResearchState) -> dict:
                 ),
             ]
         )
+        if llm.cache_hit:
+            await status.message("Plan served from semantic cache — skipped the LLM call")
+        elif llm.fell_back:
+            await status.message(f"Primary model unavailable — used {llm.last_model_used}")
 
         return {
             "ticker": ticker,

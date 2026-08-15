@@ -11,6 +11,7 @@ export default function ReportByIdPage() {
   const [report, setReport] = useState(null)
   const [error, setError] = useState(null)
   const [watchlisted, setWatchlisted] = useState(false)
+  const [watchlistBusy, setWatchlistBusy] = useState(false)
 
   useEffect(() => {
     setReport(null)
@@ -28,9 +29,14 @@ export default function ReportByIdPage() {
   }, [report?.ticker])
 
   async function handleAddToWatchlist() {
-    if (!report) return
-    await addToWatchlist(report.ticker)
-    setWatchlisted(true)
+    if (!report || watchlistBusy) return
+    setWatchlistBusy(true)
+    try {
+      await addToWatchlist(report.ticker)
+      setWatchlisted(true)
+    } finally {
+      setWatchlistBusy(false)
+    }
   }
 
   async function handleRerun() {
@@ -48,6 +54,7 @@ export default function ReportByIdPage() {
           onRerun={handleRerun}
           onAddToWatchlist={handleAddToWatchlist}
           watchlisted={watchlisted}
+          watchlistBusy={watchlistBusy}
         />
       )}
     </div>

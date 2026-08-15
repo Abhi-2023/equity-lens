@@ -95,7 +95,7 @@ class WatchlistEntry(Base):
     __tablename__ = "watchlist_entries"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    ticker: Mapped[str] = mapped_column(String(16))
+    ticker: Mapped[str] = mapped_column(String(16), unique=True)
     company: Mapped[str] = mapped_column(String(255))
     added_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), default=_now)
     last_refreshed_at: Mapped[datetime.datetime | None] = mapped_column(

@@ -25,14 +25,7 @@ local dev or tests that don't have a Cohere account.
 """
 from __future__ import annotations
 
-import os
 from functools import lru_cache
-
-# Must be set before fastembed/huggingface_hub download anything: on Windows,
-# without admin rights or Developer Mode, HF's symlink-based cache silently
-# produces broken model snapshots (missing config.json) — copying the files
-# instead avoids that.
-os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS", "1")
 
 import cohere
 from langsmith import traceable
@@ -40,24 +33,10 @@ from qdrant_client import QdrantClient, models
 from rank_bm25 import BM25Okapi
 
 from app.config import settings
+from app.qdrant_client import EMBEDDING_MODEL, get_qdrant_client as _client
 
 _RRF_K = 60
 _RERANK_CANDIDATE_MULTIPLIER = 3  # fetch more than k so reranking has something to work with
-EMBEDDING_MODEL = "BAAI/bge-small-en"
-
-
-@lru_cache
-def _client() -> QdrantClient:
-    if settings.qdrant_url:
-        client = QdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key)
-    elif settings.qdrant_allow_embedded:
-        client = QdrantClient(path=settings.qdrant_path)
-    else:
-        raise RuntimeError(
-            "QDRANT_URL is not set. Run `docker-compose up qdrant` (or point QDRANT_URL at an "
-            "existing instance); set QDRANT_ALLOW_EMBEDDED=true only for offline local dev."
-        )
-    return client
 
 
 @lru_cache

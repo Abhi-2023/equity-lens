@@ -19,6 +19,7 @@ langgraph>=1.1
 langchain-core
 langchain-groq
 langchain-mcp-adapters
+groq>=0.11  # used directly by app/llm/errors.py for exception classification
 
 # MCP
 mcp>=1.0
