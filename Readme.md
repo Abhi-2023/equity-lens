@@ -132,8 +132,43 @@ cd backend
 pytest
 ```
 
+## Evaluation (P8)
+
+Two scripts, run inside the backend container so they share its
+GROQ_*/LANGCHAIN_* env and installed deps:
+
+```bash
+docker exec equitylens_backend python scripts/build_golden_dataset.py  # (re)builds the golden dataset
+docker exec equitylens_backend python scripts/run_eval.py              # runs the eval, uploads to LangSmith
+```
+
+- **`build_golden_dataset.py`** — pushes a LangSmith dataset
+  (`equitylens-golden-v1`) with one example per company across a spread of
+  sectors/market caps. The reference output for each isn't a hand-typed
+  fact — it's the exact SEC 10-K filing-chunk `source` strings
+  (`"{TICKER} 10-K ({date}) — {item}"`) the real ingestion pipeline
+  ([backend/app/rag/ingest.py](backend/app/rag/ingest.py)) produces for
+  that company's Item 1 / Item 1A, so the eval's ground truth can't drift
+  out of sync with the primary source the pipeline actually reads.
+- **`run_eval.py`** — runs each golden example through the *real* graph
+  (`build_graph().ainvoke(...)`, the same code path as a live
+  `POST /reports`) and scores it with three evaluators via
+  `langsmith.aevaluate`:
+  - `ticker_correctness` — deterministic, did ticker resolution land on
+    the expected symbol.
+  - `citation_coverage` — deterministic, did the evidence bundle actually
+    include a chunk from each required filing item (catches retrieval
+    misses — e.g. it caught the filings agent citing Item 16 instead of
+    Item 1A for a risk-factors query on one company during testing).
+  - `llm_judge_groundedness` — **LLM-as-judge**: an independent grading
+    pass, deliberately *not* the pipeline's own fact-checker — a fresh,
+    uncached call with its own skeptical prompt — that re-reads each
+    section against only its cited evidence text and scores 1-5 how well
+    the claims are actually supported.
+
+Results land in LangSmith as an experiment against the `equitylens-golden-v1`
+dataset, alongside the per-run traces from `LANGCHAIN_TRACING_V2=true`.
+
 ## Not yet built
 
-- P8 — golden eval dataset + scorers (LangSmith tracing itself is wired; the
-  offline eval harness is not)
 - P9 — Secret Manager, CI/CD to Cloud Run (Dockerization is done)
