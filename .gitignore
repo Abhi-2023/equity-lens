@@ -16,3 +16,4 @@ frontend/.env
 .env.example
 .claude/worktrees/
 .vscode/
+.claude
