@@ -163,7 +163,7 @@ def _cohere_rerank(query: str, candidates: list[dict], k: int) -> list[dict]:
 
 
 @traceable(name="filings_hybrid_search", run_type="retriever")
-def hybrid_search(ticker: str, query: str, k: int = 6) -> list[dict]:
+def hybrid_search(ticker: str, query: str, k: int = 20) -> list[dict]:
     client = _client()
     collection = _collection_name(ticker)
     if not client.collection_exists(collection):
